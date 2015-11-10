@@ -1223,7 +1223,7 @@ function GetRefStatus($Owner, $Repository, $Ref)
     $uri = ("https://api.github.com/repos/$Owner/$Repository/statuses/$Ref" +
       "?access_token=${Env:\GITHUB_OAUTH_TOKEN}")
 
-    Invoke-RestMethod -Uri $uri
+    Invoke-RestMethod -Uri $uri -DisableKeepAlive
 }
 
 function SetRefStatus($Owner, $Repository, $Ref, $State, $Description, $Context, $TargetUrl)
@@ -1248,8 +1248,9 @@ function SetRefStatus($Owner, $Repository, $Ref, $State, $Description, $Context,
     $params = @{
       Uri = $uri;
       Method = 'POST';
-      ContentType = 'application/json'
-      Body = (ConvertTo-Json $postData -Compress)
+      ContentType = 'application/json';
+      Body = (ConvertTo-Json $postData -Compress);
+      DisableKeepAlive = $true;
     }
 
     Invoke-RestMethod @params
