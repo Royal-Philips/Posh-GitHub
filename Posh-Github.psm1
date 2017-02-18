@@ -281,7 +281,7 @@ function GetUserIssues($Filter, $State, $Labels, $Sort, $Direction, $Since)
 }
 
 # TODO: Complete to fully support https://developer.github.com/v3/search/
-function Search-GitHubIssues
+function Search-GitHubRepoIssues
 {
   [CmdletBinding(DefaultParameterSetName='repo')]
   param(
@@ -338,27 +338,38 @@ function Search-GitHubIssues
   {
     $labelsParam = "+labels:" + ($Labels -join ',')
   }
-  if ($Type) { $Type = "+type:$Type" }
+  if ($State) { $stateParam = "+state:$State" }
+  if ($Type) { $typeParam = "+type:$Type" }
   if ($Author) { $Author = "+author:$Author" }
   if ($Mentions) { $Mentions = "+mentions:$Mentions" }
   if ($Assignee) { $Assignee = "+assignee:$Assignee" }
 
   $uri = ("https://api.github.com/search/issues" +
-   "?q=$Keyword$repo$State$Type$Assignee$Author$Mentions" +
-   "$labelsParam&sort=$Sort&order=$Order"+
-   "&access_token=${Env:\GITHUB_OAUTH_TOKEN}")
+   "?q=$Keyword$repo$stateParam$typeParam$Assignee$Author$Mentions" +
+   "$labelsParam&sort=$Sort&order=$Order")
 
   #no way to set Accept header with Invoke-RestMethod
   #http://connect.microsoft.com/PowerShell/feedback/details/757249/invoke-restmethod-accept-header#tabs
   #-Headers @{ Accept = 'application/vnd.github.v3.text+json' }
 
   Write-Host "Searching $Type for $Owner/$Repository with Keyword:$Keyword"
-  $global:GITHUB_API_OUTPUT = Invoke-RestMethod -Uri $uri
-  Write-Verbose $global:GITHUB_API_OUTPUT
+
+  $params = @{
+                Uri = $uri;
+                Method = 'GET';
+                ContentType = 'application/json';
+                Headers = @{
+                  Authorization = "token ${Env:\GITHUB_OAUTH_TOKEN}"
+                }
+            }
+
+  $getResult = Invoke-RestMethod @params 
+  $global:GITHUB_API_OUTPUT = $getResult.items 
 
   $global:GITHUB_API_OUTPUT |
     % { Write-Host "Issue $($_.number): $($_.title)" }
-
+  
+  return $getResult
 }
 
 function Get-GitHubIssues
@@ -849,7 +860,7 @@ function Backup-GitHubRepositories
   }
 }
 
-function GetUserPullRequests($User, $State, $Labels)
+function GetUserPullRequests($User, $State)
 {
   $totalCount = 0
   $uri = ("https://api.github.com/users/$User/repos" +
@@ -881,7 +892,7 @@ function GetUserPullRequests($User, $State, $Labels)
       $repo = Invoke-RestMethod -Uri $_.url
 
       $uri = ("https://api.github.com/repos/$($repo.parent.full_name)/pulls" +
-        "?state=$State&access_token=${Env:\GITHUB_OAUTH_TOKEN}&labels=$Labels")
+        "?state=$State&access_token=${Env:\GITHUB_OAUTH_TOKEN}")
       $pulls = Invoke-RestMethod -Uri $uri
 
       $global:GITHUB_API_OUTPUT.Repos += @{ Repo = $repo; Pulls = $pulls }
@@ -902,13 +913,13 @@ function GetUserPullRequests($User, $State, $Labels)
   Write-Host "`nFound $totalCount $State pull requests for $User"
 }
 
-function GetRepoPullRequests($Owner, $Repository, $State, $Labels)
+function GetRepoPullRequests($Owner, $Repository, $State)
 {
   $totalCount = 0
   Write-Host "Getting $State pull requests for $Owner/$Repository"
 
   $uri = ("https://api.github.com/repos/$Owner/$Repository/pulls" +
-    "?access_token=${Env:\GITHUB_OAUTH_TOKEN}&state=$State&labels=$Labels");
+    "?access_token=${Env:\GITHUB_OAUTH_TOKEN}&state=$State");
 
   $global:GITHUB_API_OUTPUT = Invoke-RestMethod -Uri $uri
   #Write-Verbose $global:GITHUB_API_OUTPUT
@@ -950,11 +961,7 @@ function Get-GitHubPullRequests
     [Parameter(Mandatory = $false)]
     [string]
     [ValidateSet('open', 'closed')]
-    $State = 'open',
-
-    [Parameter(Mandatory = $false)]
-    [string]
-    $Labels = $null
+    $State = 'open'
   )
 
   try
@@ -986,7 +993,7 @@ function Get-GitHubPullRequests
                 " and no -User parameter or GITHUB_USERNAME was found ")
             }
 
-            return GetUserPullRequests $User $State.ToLower() $Labels.ToLower()
+            return GetUserPullRequests $User $State.ToLower()
           }
         }
         elseif ([string]::IsNullOrEmpty($Owner) -or [string]::IsNullOrEmpty($Repository))
@@ -994,14 +1001,14 @@ function Get-GitHubPullRequests
           throw "An Owner and Repository must be specified together"
         }
 
-        GetRepoPullRequests $Owner $Repository $State.ToLower() $Labels.ToLower()
+        GetRepoPullRequests $Owner $Repository $State.ToLower()
       }
       'user'
       {
         if ([string]::IsNullOrEmpty($User))
           { throw "Supply the -User parameter or set GITHUB_USERNAME env variable "}
 
-        GetUserPullRequests $User $State.ToLower() $Labels.ToLower()
+        GetUserPullRequests $User $State.ToLower()
       }
     }
   }
@@ -1430,4 +1437,3 @@ Export-ModuleMember -Function  New-GitHubOAuthToken, New-GitHubPullRequest,
   Get-GitHubPullRequests, Set-GitHubUserName, Set-GitHubOrganization,
   Get-GitHubTeams, New-GitHubRepository, New-GitHubFork,
   Clear-GitMergedBranches, Backup-GitHubRepositories,
-  Get-GitHubStatus, Set-GitHubStatus
