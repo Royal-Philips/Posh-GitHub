@@ -280,6 +280,87 @@ function GetUserIssues($Filter, $State, $Labels, $Sort, $Direction, $Since)
     }
 }
 
+# TODO: Complete to fully support https://developer.github.com/v3/search/
+function Search-GitHubIssues
+{
+  [CmdletBinding(DefaultParameterSetName='repo')]
+  param(
+    [Parameter(Mandatory = $true, Position=0, ParameterSetName='repo')]
+    [string]
+    $Owner = $null,
+
+    [Parameter(Mandatory = $true, Position=1, ParameterSetName='repo')]
+    [string]
+    $Repository = $null,
+
+    [Parameter(Mandatory = $false)]
+    [string]
+    $Keyword,    
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('issue', 'pr')]
+    $Type = 'issue',
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('title', 'body','comments')]
+    $In,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('open', 'closed', 'all')]
+    $State = 'open',
+
+    [Parameter(Mandatory = $false, ParameterSetName='repo')]
+    [ValidatePattern('^\*$|^none$|^.+$')]
+    $Assignee,
+
+    [Parameter(Mandatory = $false, ParameterSetName='repo')]
+    [string]
+    $Author,
+
+    [Parameter(Mandatory = $false, ParameterSetName='repo')]
+    [string]
+    $Mentions,
+
+    [Parameter(Mandatory = $false)]
+    [string[]]
+    $Labels = @(),
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('created', 'updated', 'comments')]
+    $Sort = 'created',
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('asc', 'desc')]
+    $Order = 'desc'
+  )
+  $repo = "+repo:$Owner/$Repository"
+  if ($Labels -and ($Labels.Count -gt 0))
+  {
+    $labelsParam = "+labels:" + ($Labels -join ',')
+  }
+  if ($Type) { $Type = "+type:$Type" }
+  if ($Author) { $Author = "+author:$Author" }
+  if ($Mentions) { $Mentions = "+mentions:$Mentions" }
+  if ($Assignee) { $Assignee = "+assignee:$Assignee" }
+
+  $uri = ("https://api.github.com/search/issues" +
+   "?q=$Keyword$repo$State$Type$Assignee$Author$Mentions" +
+   "$labelsParam&sort=$Sort&order=$Order"+
+   "&access_token=${Env:\GITHUB_OAUTH_TOKEN}")
+
+  #no way to set Accept header with Invoke-RestMethod
+  #http://connect.microsoft.com/PowerShell/feedback/details/757249/invoke-restmethod-accept-header#tabs
+  #-Headers @{ Accept = 'application/vnd.github.v3.text+json' }
+
+  Write-Host "Searching $Type for $Owner/$Repository with Keyword:$Keyword"
+  $global:GITHUB_API_OUTPUT = Invoke-RestMethod -Uri $uri
+  Write-Verbose $global:GITHUB_API_OUTPUT
+
+  $global:GITHUB_API_OUTPUT |
+    % { Write-Host "Issue $($_.number): $($_.title)" }
+
+}
+
 function Get-GitHubIssues
 {
   [CmdletBinding(DefaultParameterSetName='repo')]
@@ -768,7 +849,7 @@ function Backup-GitHubRepositories
   }
 }
 
-function GetUserPullRequests($User, $State)
+function GetUserPullRequests($User, $State, $Labels)
 {
   $totalCount = 0
   $uri = ("https://api.github.com/users/$User/repos" +
@@ -800,7 +881,7 @@ function GetUserPullRequests($User, $State)
       $repo = Invoke-RestMethod -Uri $_.url
 
       $uri = ("https://api.github.com/repos/$($repo.parent.full_name)/pulls" +
-        "?state=$State&access_token=${Env:\GITHUB_OAUTH_TOKEN}")
+        "?state=$State&access_token=${Env:\GITHUB_OAUTH_TOKEN}&labels=$Labels")
       $pulls = Invoke-RestMethod -Uri $uri
 
       $global:GITHUB_API_OUTPUT.Repos += @{ Repo = $repo; Pulls = $pulls }
@@ -821,13 +902,13 @@ function GetUserPullRequests($User, $State)
   Write-Host "`nFound $totalCount $State pull requests for $User"
 }
 
-function GetRepoPullRequests($Owner, $Repository, $State)
+function GetRepoPullRequests($Owner, $Repository, $State, $Labels)
 {
   $totalCount = 0
   Write-Host "Getting $State pull requests for $Owner/$Repository"
 
   $uri = ("https://api.github.com/repos/$Owner/$Repository/pulls" +
-    "?access_token=${Env:\GITHUB_OAUTH_TOKEN}&state=$State");
+    "?access_token=${Env:\GITHUB_OAUTH_TOKEN}&state=$State&labels=$Labels");
 
   $global:GITHUB_API_OUTPUT = Invoke-RestMethod -Uri $uri
   #Write-Verbose $global:GITHUB_API_OUTPUT
@@ -869,7 +950,11 @@ function Get-GitHubPullRequests
     [Parameter(Mandatory = $false)]
     [string]
     [ValidateSet('open', 'closed')]
-    $State = 'open'
+    $State = 'open',
+
+    [Parameter(Mandatory = $false)]
+    [string]
+    $Labels = $null
   )
 
   try
@@ -901,7 +986,7 @@ function Get-GitHubPullRequests
                 " and no -User parameter or GITHUB_USERNAME was found ")
             }
 
-            return GetUserPullRequests $User $State.ToLower()
+            return GetUserPullRequests $User $State.ToLower() $Labels.ToLower()
           }
         }
         elseif ([string]::IsNullOrEmpty($Owner) -or [string]::IsNullOrEmpty($Repository))
@@ -909,14 +994,14 @@ function Get-GitHubPullRequests
           throw "An Owner and Repository must be specified together"
         }
 
-        GetRepoPullRequests $Owner $Repository $State.ToLower()
+        GetRepoPullRequests $Owner $Repository $State.ToLower() $Labels.ToLower()
       }
       'user'
       {
         if ([string]::IsNullOrEmpty($User))
           { throw "Supply the -User parameter or set GITHUB_USERNAME env variable "}
 
-        GetUserPullRequests $User $State.ToLower()
+        GetUserPullRequests $User $State.ToLower() $Labels.ToLower()
       }
     }
   }
