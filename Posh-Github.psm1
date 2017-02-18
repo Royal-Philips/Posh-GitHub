@@ -336,7 +336,10 @@ function Search-GitHubRepoIssues
   $repo = "+repo:$Owner/$Repository"
   if ($Labels -and ($Labels.Count -gt 0))
   {
-    $labelsParam = "+labels:" + ($Labels -join ',')
+    $labelsParam = ""
+    foreach ($label in $Labels){
+      $labelsParam += "+label:$label"
+    }
   }
   if ($State) { $stateParam = "+state:$State" }
   if ($Type) { $typeParam = "+type:$Type" }
@@ -347,10 +350,6 @@ function Search-GitHubRepoIssues
   $uri = ("https://api.github.com/search/issues" +
    "?q=$Keyword$repo$stateParam$typeParam$Assignee$Author$Mentions" +
    "$labelsParam&sort=$Sort&order=$Order")
-
-  #no way to set Accept header with Invoke-RestMethod
-  #http://connect.microsoft.com/PowerShell/feedback/details/757249/invoke-restmethod-accept-header#tabs
-  #-Headers @{ Accept = 'application/vnd.github.v3.text+json' }
 
   Write-Host "Searching $Type for $Owner/$Repository with Keyword:$Keyword"
 
