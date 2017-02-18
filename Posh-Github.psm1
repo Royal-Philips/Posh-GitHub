@@ -1437,3 +1437,4 @@ Export-ModuleMember -Function  New-GitHubOAuthToken, New-GitHubPullRequest,
   Get-GitHubPullRequests, Set-GitHubUserName, Set-GitHubOrganization,
   Get-GitHubTeams, New-GitHubRepository, New-GitHubFork,
   Clear-GitMergedBranches, Backup-GitHubRepositories,
+  Get-GitHubStatus, Set-GitHubStatus, Search-GitHubRepoIssues
